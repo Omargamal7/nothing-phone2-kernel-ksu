@@ -30,6 +30,9 @@ jobs:
 
       - name: Copy KSU/SUSFS Integration Files
         run: |
+          # Port the r43 fork's KernelSU/SUSFS integration onto the clean
+          # arter97 r45b2 base checked out above. Do not replace the r45b2
+          # kernel tree wholesale with the older fork.
           cp -r fork/KernelSU kernel/
           cp -r fork/susfs4ksu kernel/
           cp -r fork/kernel_patches kernel/
@@ -52,11 +55,11 @@ jobs:
         run: |
           # Apply the KSU hooks that the fork had pre-committed
           echo "Applying KernelSU Next hooks..."
-          patch -p1 --forward < kernel_patches/next/next_hooks.patch || true
+          patch -p1 --forward < kernel_patches/next/next_hooks.patch
           
           # Run the fork's standard patch script
           echo "Running fork's patch script..."
-          ./patch_kernel.sh || true
+          ./patch_kernel.sh
 
       - name: Inject KSU/SUSFS configs into defconfig
         working-directory: kernel
@@ -90,6 +93,14 @@ jobs:
       - name: Build Kernel
         working-directory: kernel
         run: ./build_kernel.sh
+
+      - name: Verify KernelSU is built into boot image
+        working-directory: kernel
+        run: |
+          # Fail the workflow before uploading if KernelSU was not selected or
+          # the linked kernel does not contain KernelSU symbols.
+          grep -q '^CONFIG_KSU=y$' .config
+          grep -Eq ' ksu_| kernelsu' System.map
 
       - name: Upload boot.img artifact
         uses: actions/upload-artifact@v4
