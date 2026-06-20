@@ -1,0 +1,92 @@
+name: Build Kernel r45b2 with KSU Next and SUSFS
+
+on:
+  workflow_dispatch: # Allows manual trigger from the Actions tab
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y make ccache clang flex bison llvm lld libssl-dev bc lz4 fakeroot cpio patch pigz python3
+
+      - name: Checkout arter97 r45b2 (Base Kernel)
+        uses: actions/checkout@v4
+        with:
+          repository: arter97/android_kernel_nothing_sm8475
+          ref: r45b2
+          path: kernel
+
+      - name: Checkout kareefardi fork (For KSU/SUSFS scripts)
+        uses: actions/checkout@v4
+        with:
+          repository: kareefardi/android_kernel_nothing_sm8475_fork
+          ref: master
+          path: fork
+          submodules: true
+
+      - name: Copy KSU/SUSFS Integration Files
+        run: |
+          cp -r fork/KernelSU kernel/
+          cp -r fork/susfs4ksu kernel/
+          cp -r fork/kernel_patches kernel/
+          cp -r fork/mkbootimg kernel/
+          cp fork/patch_kernel.sh kernel/
+          cp fork/build_kernel.sh kernel/
+          cp fork/ramdisk_fix_permissions.sh kernel/
+          
+          # Ensure scripts are executable
+          chmod +x kernel/*.sh
+
+      - name: Apply Kernel Patches
+        working-directory: kernel
+        run: |
+          # Apply the KSU hooks that the fork had pre-committed
+          echo "Applying KernelSU Next hooks..."
+          patch -p1 --forward < kernel_patches/next/next_hooks.patch || true
+          
+          # Run the fork's standard patch script
+          echo "Running fork's patch script..."
+          ./patch_kernel.sh || true
+
+      - name: Inject KSU/SUSFS configs into defconfig
+        working-directory: kernel
+        run: |
+          cat << 'EOF' >> defconfig
+          # KernelSU Next
+          CONFIG_KSU=y
+          # CONFIG_KSU_DEBUG is not set
+          CONFIG_KSU_ALLOWLIST_WORKAROUND=n
+          CONFIG_KSU_LSM_SECURITY_HOOKS=y
+          # KernelSU Next - susfs
+          CONFIG_KSU_SUSFS=y
+          CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_PATH=y
+          CONFIG_KSU_SUSFS_SUS_MOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_KSTAT=y
+          CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
+          CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
+          CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+          CONFIG_KSU_SUSFS_ENABLE_LOG=y
+          CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+          CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+          CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+          CONFIG_OVERLAY_FS=y
+          CONFIG_OVERLAY_FS_REDIRECT_ALWAYS_FOLLOW=y
+          EOF
+
+      - name: Build Kernel
+        working-directory: kernel
+        run: ./build_kernel.sh
+
+      - name: Upload boot.img artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-image-r45b2-ksu-susfs
+          path: kernel/boot.img
