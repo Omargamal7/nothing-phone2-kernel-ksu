@@ -28,9 +28,8 @@ jobs:
           path: fork
           submodules: true
 
-      - name: Copy KSU/SUSFS Integration Files
+      - name: Copy SUSFS Integration Files
         run: |
-          cp -r fork/KernelSU kernel/
           cp -r fork/susfs4ksu kernel/
           cp -r fork/kernel_patches kernel/
           cp -r fork/mkbootimg kernel/
@@ -40,6 +39,19 @@ jobs:
           
           # Ensure scripts are executable
           chmod +x kernel/*.sh
+
+      - name: Install KernelSU Next
+        working-directory: kernel
+        run: |
+          # The kareefardi fork currently vendors SukiSU under the KernelSU
+          # submodule path. Build KernelSU Next explicitly so KernelSU Next
+          # managers can detect and manage the rooted boot image.
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | sh -s -- next
+
+          # The copied fork scripts and SUSFS patches expect the tree to be
+          # available at ./KernelSU, while KernelSU Next's setup script clones
+          # ./KernelSU-Next. Keep that expected path without duplicating files.
+          ln -sfn KernelSU-Next KernelSU
 
       - name: Remove hardcoded toolchain paths
         working-directory: kernel
@@ -52,11 +64,11 @@ jobs:
         run: |
           # Apply the KSU hooks that the fork had pre-committed
           echo "Applying KernelSU Next hooks..."
-          patch -p1 --forward < kernel_patches/next/next_hooks.patch || true
+          patch -p1 --forward < kernel_patches/next/next_hooks.patch
           
           # Run the fork's standard patch script
           echo "Running fork's patch script..."
-          ./patch_kernel.sh || true
+          ./patch_kernel.sh
 
       - name: Inject KSU/SUSFS configs into defconfig
         working-directory: kernel
@@ -90,6 +102,14 @@ jobs:
       - name: Build Kernel
         working-directory: kernel
         run: ./build_kernel.sh
+
+      - name: Verify KernelSU is built into boot image
+        working-directory: kernel
+        run: |
+          # Fail the workflow before uploading if KernelSU was not selected or
+          # the linked kernel does not contain KernelSU symbols.
+          grep -q '^CONFIG_KSU=y$' .config
+          grep -Eq ' ksu_| kernelsu' System.map
 
       - name: Upload boot.img artifact
         uses: actions/upload-artifact@v4
