@@ -41,6 +41,12 @@ jobs:
           # Ensure scripts are executable
           chmod +x kernel/*.sh
 
+      - name: Remove hardcoded toolchain paths
+        working-directory: kernel
+        run: |
+          sed -i 's|override CROSS_COMPILE.*||g' Makefile
+          sed -i 's|override LLVM_PATH.*||g' Makefile
+
       - name: Apply Kernel Patches
         working-directory: kernel
         run: |
