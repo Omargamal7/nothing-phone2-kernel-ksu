@@ -28,12 +28,8 @@ jobs:
           path: fork
           submodules: true
 
-      - name: Copy KSU/SUSFS Integration Files
+      - name: Copy SUSFS Integration Files
         run: |
-          # Port the r43 fork's KernelSU/SUSFS integration onto the clean
-          # arter97 r45b2 base checked out above. Do not replace the r45b2
-          # kernel tree wholesale with the older fork.
-          cp -r fork/KernelSU kernel/
           cp -r fork/susfs4ksu kernel/
           cp -r fork/kernel_patches kernel/
           cp -r fork/mkbootimg kernel/
@@ -43,6 +39,19 @@ jobs:
           
           # Ensure scripts are executable
           chmod +x kernel/*.sh
+
+      - name: Install KernelSU Next
+        working-directory: kernel
+        run: |
+          # The kareefardi fork currently vendors SukiSU under the KernelSU
+          # submodule path. Build KernelSU Next explicitly so KernelSU Next
+          # managers can detect and manage the rooted boot image.
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | sh -s -- next
+
+          # The copied fork scripts and SUSFS patches expect the tree to be
+          # available at ./KernelSU, while KernelSU Next's setup script clones
+          # ./KernelSU-Next. Keep that expected path without duplicating files.
+          ln -sfn KernelSU-Next KernelSU
 
       - name: Remove hardcoded toolchain paths
         working-directory: kernel
