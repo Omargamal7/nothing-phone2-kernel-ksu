@@ -1,4 +1,4 @@
-name: Build Kernel r45b2 with KSU Next and SUSFS
+name: Build Kernel r45b2 with WildKSU (SukiSU-Ultra) and SUSFS
 
 on:
   workflow_dispatch: # Allows manual trigger from the Actions tab
@@ -20,7 +20,7 @@ jobs:
           ref: r45b2
           path: kernel
 
-      - name: Checkout kareefardi fork (For KSU/SUSFS scripts)
+      - name: Checkout kareefardi fork (For KSU/SUSFS scripts and patches)
         uses: actions/checkout@v4
         with:
           repository: kareefardi/android_kernel_nothing_sm8475_fork
@@ -28,58 +28,72 @@ jobs:
           path: fork
           submodules: true
 
-      - name: Copy SUSFS Integration Files
-        run: |
-          cp -r fork/susfs4ksu kernel/
-          cp -r fork/kernel_patches kernel/
-          cp -r fork/mkbootimg kernel/
-          cp fork/patch_kernel.sh kernel/
-          cp fork/build_kernel.sh kernel/
-          cp fork/ramdisk_fix_permissions.sh kernel/
-          
-          # Ensure scripts are executable
-          chmod +x kernel/*.sh
-
-      - name: Install KernelSU Next
+      - name: Copy KSU/SUSFS Integration Files into kernel tree
         working-directory: kernel
         run: |
-          # The kareefardi fork currently vendors SukiSU under the KernelSU
-          # submodule path. Build KernelSU Next explicitly so KernelSU Next
-          # managers can detect and manage the rooted boot image.
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | sh -s -- next
+          # Copy the SukiSU-Ultra (WildKSU) source into the kernel tree
+          cp -r ../fork/KernelSU .
+          cp -r ../fork/susfs4ksu .
+          cp -r ../fork/kernel_patches .
+          cp -r ../fork/mkbootimg .
+          cp ../fork/build_kernel.sh .
+          cp ../fork/ramdisk_fix_permissions.sh .
+          
+          # Ensure scripts are executable
+          chmod +x *.sh
 
-          # The copied fork scripts and SUSFS patches expect the tree to be
-          # available at ./KernelSU, while KernelSU Next's setup script clones
-          # ./KernelSU-Next. Keep that expected path without duplicating files.
-          ln -sfn KernelSU-Next KernelSU
-
-      - name: Remove hardcoded toolchain paths
+      - name: Remove hardcoded toolchain paths from Makefile
         working-directory: kernel
         run: |
           sed -i 's|override CROSS_COMPILE.*||g' Makefile
           sed -i 's|override LLVM_PATH.*||g' Makefile
 
-      - name: Apply Kernel Patches
+      - name: Apply WildKSU hooks patch
         working-directory: kernel
         run: |
-          # Apply the KSU hooks that the fork had pre-committed
-          echo "Applying KernelSU Next hooks..."
-          patch -p1 --forward < kernel_patches/next/next_hooks.patch
-          
-          # Run the fork's standard patch script
-          echo "Running fork's patch script..."
-          ./patch_kernel.sh
+          echo "=== Applying WildKSU hooks (ksu_hooks.patch) ==="
+          patch -p1 --forward < kernel_patches/wild/hooks/ksu_hooks.patch
+          echo "=== WildKSU hooks applied successfully ==="
+
+      - name: Apply SUSFS kernel integration patch
+        working-directory: kernel
+        run: |
+          echo "=== Applying SUSFS GKI android13-5.10 integration patch ==="
+          patch -p1 --forward < susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.10.patch
+          echo "=== SUSFS integration patch applied successfully ==="
+
+      - name: Apply SUSFS support into KernelSU (SukiSU-Ultra)
+        working-directory: kernel
+        run: |
+          echo "=== Enabling SUSFS inside SukiSU-Ultra ==="
+          patch -d KernelSU -p1 --forward < susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
+          echo "=== SUSFS enabled in SukiSU-Ultra ==="
+
+      - name: Apply WildKernels SUSFS fix patches
+        working-directory: kernel
+        run: |
+          echo "=== Applying WildKernels SUSFS fix patches for v1.5.9 ==="
+          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch
+          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch
+          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_kernel_compat.c.patch
+          patch -d KernelSU -p1 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch
+          echo "=== All SUSFS fix patches applied ==="
+
+      - name: Fix KernelSU min kernel version for 5.10
+        working-directory: kernel
+        run: |
+          sed -i 's/KERNEL_VERSION(6, 4, 0)/KERNEL_VERSION(5, 10, 0)/' KernelSU/kernel/selinux/rules.c
 
       - name: Inject KSU/SUSFS configs into defconfig
         working-directory: kernel
         run: |
           cat << 'EOF' >> defconfig
-          # KernelSU Next
+          # KernelSU (SukiSU-Ultra / WildKSU)
           CONFIG_KSU=y
           # CONFIG_KSU_DEBUG is not set
           CONFIG_KSU_ALLOWLIST_WORKAROUND=n
           CONFIG_KSU_LSM_SECURITY_HOOKS=y
-          # KernelSU Next - susfs
+          # KernelSU - SUSFS
           CONFIG_KSU_SUSFS=y
           CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
           CONFIG_KSU_SUSFS_SUS_PATH=y
@@ -99,6 +113,22 @@ jobs:
           CONFIG_OVERLAY_FS_REDIRECT_ALWAYS_FOLLOW=y
           EOF
 
+      - name: Verify patch integration before build
+        working-directory: kernel
+        run: |
+          echo "=== Checking KernelSU Kconfig exists ==="
+          cat KernelSU/kernel/Kconfig | head -5
+          echo "=== Checking SUSFS source files exist ==="
+          ls -la fs/susfs.c
+          ls -la include/linux/susfs.h
+          echo "=== Checking KSU configs in defconfig ==="
+          grep "CONFIG_KSU" defconfig
+          echo "=== Checking kernel/Kconfig sources KernelSU ==="
+          grep -r "KernelSU" kernel/Kconfig
+          echo "=== Checking fs/Makefile has susfs ==="
+          grep -i "susfs" fs/Makefile
+          echo "=== All integration checks passed ==="
+
       - name: Build Kernel
         working-directory: kernel
         run: ./build_kernel.sh
@@ -106,13 +136,14 @@ jobs:
       - name: Verify KernelSU is built into boot image
         working-directory: kernel
         run: |
-          # Fail the workflow before uploading if KernelSU was not selected or
-          # the linked kernel does not contain KernelSU symbols.
-          grep -q '^CONFIG_KSU=y$' .config
-          grep -Eq ' ksu_| kernelsu' System.map
+          echo "=== Verifying CONFIG_KSU in final .config ==="
+          grep '^CONFIG_KSU=y$' .config
+          echo "=== Verifying KSU symbols in System.map ==="
+          grep -E ' ksu_| kernelsu' System.map | head -10
+          echo "=== Build verification passed ==="
 
       - name: Upload boot.img artifact
         uses: actions/upload-artifact@v4
         with:
-          name: boot-image-r45b2-ksu-susfs
+          name: boot-image-r45b2-wildksu-susfs
           path: kernel/boot.img
