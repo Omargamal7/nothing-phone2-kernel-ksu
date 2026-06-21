@@ -40,9 +40,9 @@ jobs:
           cp ../fork/ramdisk_fix_permissions.sh .
           
           # Copy SUSFS source files into the kernel tree
-          cp ../fork/susfs4ksu/kernel_patches/fs/susfs.c fs/
-          cp ../fork/susfs4ksu/kernel_patches/include/linux/susfs.h include/linux/
-          cp ../fork/susfs4ksu/kernel_patches/fs/sus_su fs/ || true
+          cp ../fork/fs/susfs.c fs/
+          cp ../fork/include/linux/susfs.h include/linux/
+          cp ../fork/fs/sus_su fs/ || true
           
           # Ensure scripts are executable
           chmod +x *.sh
