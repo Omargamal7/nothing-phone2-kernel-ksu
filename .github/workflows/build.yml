@@ -65,8 +65,8 @@ jobs:
         working-directory: kernel
         run: |
           echo "=== Injecting KernelSU into drivers/Kconfig and drivers/Makefile ==="
-          echo 'source "KernelSU/Kconfig"' >> drivers/Kconfig
-          echo 'obj-$(CONFIG_KSU) += KernelSU/' >> drivers/Makefile
+          echo 'source "KernelSU/kernel/Kconfig"' >> drivers/Kconfig
+          echo 'obj-$(CONFIG_KSU) += KernelSU/kernel/' >> drivers/Makefile
           echo "=== Injection complete ==="
 
       - name: Apply SUSFS kernel integration patch
