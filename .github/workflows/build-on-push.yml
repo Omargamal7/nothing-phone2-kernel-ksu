@@ -1,0 +1,119 @@
+name: Build Kernel on Push
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y make ccache clang flex bison llvm lld libssl-dev bc lz4 fakeroot cpio patch pigz python3
+
+      - name: Checkout arter97 r45b2 base kernel
+        uses: actions/checkout@v4
+        with:
+          repository: arter97/android_kernel_nothing_sm8475
+          ref: r45b2
+          path: kernel
+
+      - name: Checkout KSU/SUSFS source fork
+        uses: actions/checkout@v4
+        with:
+          repository: kareefardi/android_kernel_nothing_sm8475_fork
+          ref: master
+          path: fork
+          submodules: true
+
+      - name: Copy integration files
+        working-directory: kernel
+        run: |
+          cp -r ../fork/KernelSU .
+          cp -r ../fork/susfs4ksu .
+          cp -r ../fork/kernel_patches .
+          cp -r ../fork/mkbootimg .
+          cp ../fork/fs/susfs.c fs/
+          cp ../fork/include/linux/susfs.h include/linux/
+          cp ../fork/include/linux/susfs_def.h include/linux/ || true
+          cp ../fork/fs/sus_su fs/ || true
+          cp ../fork/susfs4ksu/kernel_patches/fs/* fs/ || true
+          cp ../fork/susfs4ksu/kernel_patches/include/linux/* include/linux/ || true
+          cp ../fork/build_kernel.sh .
+          cp ../fork/ramdisk_fix_permissions.sh .
+          chmod +x *.sh
+
+      - name: Prepare build system
+        working-directory: kernel
+        run: |
+          sed -i 's|override CROSS_COMPILE.*||g' Makefile
+          sed -i 's|override LLVM_PATH.*||g' Makefile
+          ln -sfn ../KernelSU/kernel drivers/kernelsu
+          grep -q 'source "drivers/kernelsu/Kconfig"' drivers/Kconfig || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+          grep -q 'obj-$(CONFIG_KSU) += kernelsu/' drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
+
+      - name: Apply KSU and SUSFS patches
+        working-directory: kernel
+        run: |
+          patch -p1 --forward < kernel_patches/next/next_hooks.patch || true
+          patch -p1 --forward < susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.10.patch || true
+          patch -d KernelSU -p1 --forward < susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true
+          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch || true
+          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch || true
+          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_kernel_compat.c.patch || true
+          patch -d KernelSU -p1 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch || true
+          sed -i 's/KERNEL_VERSION(6, 4, 0)/KERNEL_VERSION(5, 10, 0)/' KernelSU/kernel/selinux/rules.c
+
+      - name: Inject kernel config
+        working-directory: kernel
+        run: |
+          cat << 'EOF' >> defconfig
+          CONFIG_KSU=y
+          # CONFIG_KSU_DEBUG is not set
+          CONFIG_KSU_ALLOWLIST_WORKAROUND=n
+          CONFIG_KSU_LSM_SECURITY_HOOKS=y
+          CONFIG_KSU_MULTI_MANAGER_SUPPORT=n
+          CONFIG_KSU_THRONE_TRACKER_LEGACY=n
+          CONFIG_KSU_MANUAL_SU=y
+          CONFIG_KSU_CMDLINE=n
+          CONFIG_KPM=n
+          CONFIG_KSU_TRACEPOINT_HOOK=y
+          # CONFIG_KSU_MANUAL_HOOK is not set
+          CONFIG_KSU_SUSFS=y
+          CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_PATH=y
+          CONFIG_KSU_SUSFS_SUS_MOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_KSTAT=y
+          CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
+          CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
+          CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+          CONFIG_KSU_SUSFS_ENABLE_LOG=y
+          CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+          CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+          CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+          CONFIG_OVERLAY_FS=y
+          CONFIG_OVERLAY_FS_REDIRECT_ALWAYS_FOLLOW=y
+          EOF
+
+      - name: Build kernel
+        working-directory: kernel
+        run: ./build_kernel.sh
+
+      - name: Verify KernelSU
+        working-directory: kernel
+        run: |
+          grep '^CONFIG_KSU=y$' .config
+          grep -E ' ksu_| kernelsu' System.map | head -10
+
+      - name: Upload boot image
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-image-r45b2-wildksu-susfs
+          path: kernel/boot.img
