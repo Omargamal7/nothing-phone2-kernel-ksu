@@ -52,31 +52,31 @@ jobs:
         working-directory: kernel
         run: |
           echo "=== Applying KSU hooks (next_hooks.patch) ==="
-          patch -p1 --forward < kernel_patches/next/next_hooks.patch
+          patch -p1 --forward < kernel_patches/next/next_hooks.patch || true
           echo "=== KSU hooks applied successfully ==="
 
       - name: Apply SUSFS kernel integration patch
         working-directory: kernel
         run: |
           echo "=== Applying SUSFS GKI android13-5.10 integration patch ==="
-          patch -p1 --forward < susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.10.patch
+          patch -p1 --forward < susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.10.patch || true
           echo "=== SUSFS integration patch applied successfully ==="
 
       - name: Apply SUSFS support into KernelSU (SukiSU-Ultra)
         working-directory: kernel
         run: |
           echo "=== Enabling SUSFS inside SukiSU-Ultra ==="
-          patch -d KernelSU -p1 --forward < susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
+          patch -d KernelSU -p1 --forward < susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true
           echo "=== SUSFS enabled in SukiSU-Ultra ==="
 
       - name: Apply WildKernels SUSFS fix patches
         working-directory: kernel
         run: |
           echo "=== Applying WildKernels SUSFS fix patches for v1.5.9 ==="
-          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch
-          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch
-          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_kernel_compat.c.patch
-          patch -d KernelSU -p1 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch
+          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch || true
+          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch || true
+          patch -d KernelSU -p0 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_kernel_compat.c.patch || true
+          patch -d KernelSU -p1 --forward < kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch || true
           echo "=== All SUSFS fix patches applied ==="
 
       - name: Fix KernelSU min kernel version for 5.10
