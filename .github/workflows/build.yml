@@ -36,13 +36,21 @@ jobs:
           cp -r ../fork/susfs4ksu .
           cp -r ../fork/kernel_patches .
           cp -r ../fork/mkbootimg .
-          cp ../fork/build_kernel.sh .
-          cp ../fork/ramdisk_fix_permissions.sh .
           
           # Copy SUSFS source files into the kernel tree
+          echo "=== Copying SUSFS files into kernel source ==="
           cp ../fork/fs/susfs.c fs/
           cp ../fork/include/linux/susfs.h include/linux/
+          cp ../fork/include/linux/susfs_def.h include/linux/ || true
           cp ../fork/fs/sus_su fs/ || true
+          
+          # Also try to copy from susfs4ksu if the above didn't exist
+          cp ../fork/susfs4ksu/kernel_patches/fs/* fs/ || true
+          cp ../fork/susfs4ksu/kernel_patches/include/linux/* include/linux/ || true
+          echo "=== Files copied successfully ==="
+          
+          cp ../fork/build_kernel.sh .
+          cp ../fork/ramdisk_fix_permissions.sh .
           
           # Ensure scripts are executable
           chmod +x *.sh
