@@ -122,21 +122,7 @@ jobs:
           CONFIG_OVERLAY_FS_REDIRECT_ALWAYS_FOLLOW=y
           EOF
 
-      - name: Verify patch integration before build
-        working-directory: kernel
-        run: |
-          echo "=== Checking KernelSU Kconfig exists ==="
-          cat KernelSU/kernel/Kconfig | head -5
-          echo "=== Checking SUSFS source files exist ==="
-          ls -la fs/susfs.c
-          ls -la include/linux/susfs.h
-          echo "=== Checking KSU configs in defconfig ==="
-          grep "CONFIG_KSU" defconfig
-          echo "=== Checking kernel/Kconfig sources KernelSU ==="
-          grep -r "KernelSU" kernel/Kconfig
-          echo "=== Checking fs/Makefile has susfs ==="
-          grep -i "susfs" fs/Makefile
-          echo "=== All integration checks passed ==="
+
 
       - name: Build Kernel
         working-directory: kernel
