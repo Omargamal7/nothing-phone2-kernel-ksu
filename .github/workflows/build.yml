@@ -48,12 +48,12 @@ jobs:
           sed -i 's|override CROSS_COMPILE.*||g' Makefile
           sed -i 's|override LLVM_PATH.*||g' Makefile
 
-      - name: Apply WildKSU hooks patch
+      - name: Apply KSU hooks patch
         working-directory: kernel
         run: |
-          echo "=== Applying WildKSU hooks (ksu_hooks.patch) ==="
-          patch -p1 --forward < kernel_patches/wild/hooks/ksu_hooks.patch
-          echo "=== WildKSU hooks applied successfully ==="
+          echo "=== Applying KSU hooks (next_hooks.patch) ==="
+          patch -p1 --forward < kernel_patches/next/next_hooks.patch
+          echo "=== KSU hooks applied successfully ==="
 
       - name: Apply SUSFS kernel integration patch
         working-directory: kernel
